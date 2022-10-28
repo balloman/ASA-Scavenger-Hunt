@@ -1,0 +1,46 @@
+﻿@page "/{ClueId}"
+@using ScavengerHunt.Data
+@inject SheetService SheetService
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Scavenger Hunt</PageTitle>
+
+<h1>Verification</h1>
+
+<label>
+    Enter your UAH username:
+    <input @bind="_username"/>
+</label>
+<button type="button" class="btn btn-primary" @onclick="CheckUser">
+    Submit
+</button>
+
+@code
+{
+    private string? _clue;
+    private string _username = "";
+    private bool _hasChecked = false;
+
+    [Parameter]
+    public string ClueId { get; set; } = null!;
+
+    private async Task CheckUser()
+    {
+        if (_hasChecked)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "You have already peeked at the clue, if you need another hint, scan again!");
+            return;
+        }
+        var doesUserExist = await SheetService.DoesUserExist(_username);
+        if (doesUserExist)
+        {
+            _hasChecked = true;
+            await SheetService.RecordUserScan(ClueId, _username, DateTime.Now);
+            _clue = await SheetService.GetRandomClue(ClueId);
+            await JSRuntime.InvokeVoidAsync("alert", "Success! The clue is: " + _clue);
+        } else
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Sorry, we couldn't find your username, are you sure it's entered correctly?");
+        }
+    }
+}
