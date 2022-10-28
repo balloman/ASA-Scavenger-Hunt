@@ -21,5 +21,12 @@ app.UseRouting();
 
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
-
-app.Run();
+var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+var url = $"http://0.0.0.0:{port}";
+if (app.Environment.IsDevelopment())
+{
+    app.Run();
+} else
+{
+    app.Run(url);
+}

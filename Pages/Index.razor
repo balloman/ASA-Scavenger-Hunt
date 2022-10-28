@@ -1,7 +1,7 @@
 ﻿@page "/{ClueId}"
 @using ScavengerHunt.Data
 @inject SheetService SheetService
-@inject IJSRuntime JSRuntime
+@inject IJSRuntime JsRuntime
 
 <PageTitle>Scavenger Hunt</PageTitle>
 
@@ -28,8 +28,13 @@
     {
         if (_hasChecked)
         {
-            await JSRuntime.InvokeVoidAsync("alert", "You have already peeked at the clue, if you need another hint, scan again!");
+            await JsRuntime.InvokeVoidAsync("alert", "You have already peeked at the clue, if you need another hint, scan again!");
             return;
+        }
+        var doesClueExist = SheetService.DoesClueExist(ClueId);
+        if (!doesClueExist)
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "This clue does not exist...");
         }
         var doesUserExist = await SheetService.DoesUserExist(_username);
         if (doesUserExist)
@@ -37,10 +42,10 @@
             _hasChecked = true;
             await SheetService.RecordUserScan(ClueId, _username, DateTime.Now);
             _clue = await SheetService.GetRandomClue(ClueId);
-            await JSRuntime.InvokeVoidAsync("alert", "Success! The clue is: " + _clue);
+            await JsRuntime.InvokeVoidAsync("alert", "Success! The clue is: " + _clue);
         } else
         {
-            await JSRuntime.InvokeVoidAsync("alert", "Sorry, we couldn't find your username, are you sure it's entered correctly?");
+            await JsRuntime.InvokeVoidAsync("alert", "Sorry, we couldn't find your username, are you sure it's entered correctly?");
         }
     }
 }

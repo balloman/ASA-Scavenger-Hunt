@@ -11,20 +11,26 @@ public class SheetService
     private static readonly string[] SCOPES = { SheetsService.Scope.Spreadsheets };
     private const string ID = "1Rst_ToigfD1ParbN0VKShFSX0uIsC36prjn6-FXnQ9k";
     private readonly Random _random = Random.Shared;
+    private HashSet<string> _sheetNames;
+    private readonly PeriodicTimer _refreshSheetNamesTimer;
 
     public SheetService()
     {
-        var credential = GetCredentialsFromFile();
-        if (credential == null)
-        {
-            credential = GoogleCredential.GetApplicationDefault();
-        }
+        var credential = GetCredentialsFromFile() ?? GoogleCredential.GetApplicationDefault();
+
         _service = new SheetsService(new BaseClientService.Initializer
         {
             HttpClientInitializer = credential,
         });
+        _sheetNames = GetSheetNames().Result;
+        _refreshSheetNamesTimer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        Task.Run(async () =>
+        {
+            await _refreshSheetNamesTimer.WaitForNextTickAsync();
+            _sheetNames = await GetSheetNames();
+        });
     }
-    
+
     private static GoogleCredential? GetCredentialsFromFile()
     {
         try
@@ -39,6 +45,15 @@ public class SheetService
         }
     }
 
+    private async Task<HashSet<string>> GetSheetNames()
+    {
+        var sheetNames = (await _service.Spreadsheets.Get(ID).ExecuteAsync())
+            .Sheets
+            .Select(sheet => sheet.Properties.Title)
+            .ToHashSet();
+        return sheetNames;
+    }
+
     public async Task<bool> DoesUserExist(string username)
     {
         var users = (await _service.Spreadsheets
@@ -47,9 +62,14 @@ public class SheetService
                 .ExecuteAsync())
             .Values
             .Select(list => list[0])
-            .Select(list => ((string) list).Trim())
+            .Select(list => ((string)list).Trim())
             .ToList();
         return users.Any(user => user.Equals(username.Trim(), StringComparison.CurrentCultureIgnoreCase));
+    }
+
+    public bool DoesClueExist(string clueId)
+    {
+        return _sheetNames.Contains(clueId);
     }
 
     public async Task RecordUserScan(string clueId, string username, DateTime dateTime)
@@ -78,7 +98,7 @@ public class SheetService
             .Values
             .Get(ID, $"{clueId}!A1:A")
             .ExecuteAsync();
-        
+
         if (spreadsheet is null)
         {
             throw new Exception("Sheet not found");
@@ -86,6 +106,6 @@ public class SheetService
 
         var values = spreadsheet.Values;
         var randomClue = values[_random.Next(values.Count)];
-        return (string) randomClue[0];
+        return (string)randomClue[0];
     }
 }
