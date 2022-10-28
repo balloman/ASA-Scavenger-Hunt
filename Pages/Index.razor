@@ -19,10 +19,21 @@
 {
     private string? _clue;
     private string _username = "";
-    private bool _hasChecked = false;
+    private bool _hasChecked;
+    private bool _exists = true;
 
     [Parameter]
     public string ClueId { get; set; } = null!;
+
+    /// <inheritdoc />
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!await SheetService.DoesClueExist(ClueId) && firstRender)
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Could not find this clue, check your url");
+            _exists = false;
+        }
+    }
 
     private async Task CheckUser()
     {
@@ -31,18 +42,20 @@
             await JsRuntime.InvokeVoidAsync("alert", "You have already peeked at the clue, if you need another hint, scan again!");
             return;
         }
-        var doesClueExist = SheetService.DoesClueExist(ClueId);
-        if (!doesClueExist)
+        var doesUserExistTask = SheetService.DoesUserExist(_username);
+        if (!_exists)
         {
-            await JsRuntime.InvokeVoidAsync("alert", "This clue does not exist...");
+            await JsRuntime.InvokeVoidAsync("alert", "Could not find this clue, check your url");
+            return;
         }
-        var doesUserExist = await SheetService.DoesUserExist(_username);
-        if (doesUserExist)
+        var getClueTask = SheetService.GetRandomClue(ClueId);
+        if (await doesUserExistTask)
         {
+            var userScanTask = SheetService.RecordUserScan(ClueId, _username, DateTime.Now);
             _hasChecked = true;
-            await SheetService.RecordUserScan(ClueId, _username, DateTime.Now);
-            _clue = await SheetService.GetRandomClue(ClueId);
+            _clue = await getClueTask;
             await JsRuntime.InvokeVoidAsync("alert", "Success! The clue is: " + _clue);
+            await userScanTask;
         } else
         {
             await JsRuntime.InvokeVoidAsync("alert", "Sorry, we couldn't find your username, are you sure it's entered correctly?");

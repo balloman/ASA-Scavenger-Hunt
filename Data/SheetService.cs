@@ -1,3 +1,4 @@
+using Google;
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Services;
 using Google.Apis.Sheets.v4;
@@ -11,8 +12,6 @@ public class SheetService
     private static readonly string[] SCOPES = { SheetsService.Scope.Spreadsheets };
     private const string ID = "1Rst_ToigfD1ParbN0VKShFSX0uIsC36prjn6-FXnQ9k";
     private readonly Random _random = Random.Shared;
-    private HashSet<string> _sheetNames;
-    private readonly PeriodicTimer _refreshSheetNamesTimer;
 
     public SheetService()
     {
@@ -21,13 +20,6 @@ public class SheetService
         _service = new SheetsService(new BaseClientService.Initializer
         {
             HttpClientInitializer = credential,
-        });
-        _sheetNames = GetSheetNames().Result;
-        _refreshSheetNamesTimer = new PeriodicTimer(TimeSpan.FromMinutes(1));
-        Task.Run(async () =>
-        {
-            await _refreshSheetNamesTimer.WaitForNextTickAsync();
-            _sheetNames = await GetSheetNames();
         });
     }
 
@@ -45,15 +37,6 @@ public class SheetService
         }
     }
 
-    private async Task<HashSet<string>> GetSheetNames()
-    {
-        var sheetNames = (await _service.Spreadsheets.Get(ID).ExecuteAsync())
-            .Sheets
-            .Select(sheet => sheet.Properties.Title)
-            .ToHashSet();
-        return sheetNames;
-    }
-
     public async Task<bool> DoesUserExist(string username)
     {
         var users = (await _service.Spreadsheets
@@ -67,9 +50,19 @@ public class SheetService
         return users.Any(user => user.Equals(username.Trim(), StringComparison.CurrentCultureIgnoreCase));
     }
 
-    public bool DoesClueExist(string clueId)
+    public async Task<bool> DoesClueExist(string clueId)
     {
-        return _sheetNames.Contains(clueId);
+        if (!clueId.Contains("clue", StringComparison.CurrentCultureIgnoreCase))
+        {
+            return false;
+        }
+        return (await _service.Spreadsheets
+                .Get(ID)
+                .ExecuteAsync())
+            .Sheets
+            .Any(sheet => sheet.Properties
+                .Title
+                .Equals(clueId, StringComparison.CurrentCultureIgnoreCase));
     }
 
     public async Task RecordUserScan(string clueId, string username, DateTime dateTime)
@@ -92,20 +85,28 @@ public class SheetService
         await updateRequest.ExecuteAsync();
     }
 
-    public async Task<string> GetRandomClue(string clueId)
+    public async Task<string?> GetRandomClue(string clueId)
     {
-        var spreadsheet = await _service.Spreadsheets
-            .Values
-            .Get(ID, $"{clueId}!A1:A")
-            .ExecuteAsync();
-
-        if (spreadsheet is null)
+        try
         {
-            throw new Exception("Sheet not found");
-        }
+            var spreadsheet = await _service.Spreadsheets
+                .Values
+                .Get(ID, $"{clueId}!A1:A")
+                .ExecuteAsync();
 
-        var values = spreadsheet.Values;
-        var randomClue = values[_random.Next(values.Count)];
-        return (string)randomClue[0];
+            if (spreadsheet is null)
+            {
+                throw new Exception("Sheet not found");
+            }
+
+            var values = spreadsheet.Values;
+            var randomClue = values[_random.Next(values.Count)];
+            return (string)randomClue[0];
+        } catch (GoogleApiException e)
+        {
+            Console.WriteLine(e);
+            return null;
+        }
+        
     }
 }
